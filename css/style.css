@@ -1,0 +1,71 @@
+body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+
+/* Oculta todas las secciones de página por defecto */
+.page-section {
+    display: none;
+}
+
+/* Estilos para la animación del spinner de carga */
+.spinner {
+    border-top-color: #3498db; /* Color del spinner */
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Estilos para las pestañas de navegación del admin */
+.tab-btn {
+    border-bottom-width: 2px;
+    border-color: transparent;
+    color: #4B5563; /* text-gray-600 */
+    transition: all 150ms;
+}
+.tab-btn:hover {
+    border-color: #3B82F6; /* border-blue-500 */
+}
+.tab-btn.active {
+    border-color: #3B82F6; /* border-blue-500 */
+    color: #2563EB; /* text-blue-600 */
+}
+
+
+/* Estilos de impresión para el reporte */
+@media print {
+    /* Oculta elementos no deseados en el PDF */
+    .no-print, #app-navbar, .print-button {
+        display: none !important;
+    }
+
+    /* Asegura que el cuerpo y el contenedor principal no tengan estilos que interfieran */
+    body, #app {
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        background-color: #fff;
+        min-height: auto;
+    }
+
+    /* Asegura que solo el dashboard del cliente sea visible */
+    #client-dashboard {
+        display: block !important;
+    }
+
+    /* Elimina márgenes y sombras de las tarjetas para un look más limpio */
+    .summary-cards .card {
+        box-shadow: none;
+        border: 1px solid #eee;
+    }
+
+    /* Ajustes de texto para impresión */
+    h1, h2, p, th, td {
+        color: #000 !important;
+    }
+
+    .bg-blue-600 { background-color: #2563EB !important; }
+    .bg-red-500 { background-color: #EF4444 !important; }
+    .text-white { color: #fff !important; }
+}
