@@ -28,21 +28,53 @@
             <div class="max-w-md mx-auto py-20">
                 <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Panel de Administración</h2>
                 <div class="bg-gray-50 p-8 rounded-xl shadow-lg">
-                    <p class="text-sm text-gray-600 mb-6">Use credenciales simuladas: <code>admin@finreport.co</code> / <code>password123</code></p>
                     <form id="login-form">
                         <div class="mb-4">
                             <label for="admin-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                            <input type="email" id="admin-email" value="admin@finreport.co" required class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <input type="email" id="admin-email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                         </div>
                         <div class="mb-6">
                             <label for="admin-password" class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-                            <input type="password" id="admin-password" value="password123" required class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <input type="password" id="admin-password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                         </div>
                         <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg shadow-md transition duration-150">
                             Iniciar Sesión
                         </button>
+                        <div class="mt-6 text-center border-t pt-4">
+                        <p class="text-sm text-gray-600">¿No tienes una cuenta?</p>
+                        <button id="register-btn" class="mt-2 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-lg shadow-md transition duration-150">
+                            Registrarse
+                        </button>
+                        </div>
                         <p id="login-error" class="text-red-500 text-sm mt-3 text-center hidden">Credenciales inválidas.</p>
                     </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- NUEVA SECCIÓN: PÁGINA DE REGISTRO -->
+        <section id="register-page" class="page-section">
+            <div class="max-w-md mx-auto py-20">
+                <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Crear Cuenta de Administrador</h2>
+                <div class="bg-gray-50 p-8 rounded-xl shadow-lg">
+                    <form id="register-form">
+                        <div class="mb-4">
+                            <label for="register-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <input type="email" id="register-email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div class="mb-4">
+                            <label for="register-password" class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                            <input type="password" id="register-password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-lg shadow-md transition duration-150">
+                            Crear Cuenta
+                        </button>
+                        <p id="register-feedback" class="text-sm mt-3 text-center hidden"></p>
+                    </form>
+
+                    <div class="mt-6 text-center border-t pt-4">
+                        <a href="#" id="back-to-login-link" class="text-sm text-blue-600 hover:underline">¿Ya tienes una cuenta? Inicia sesión</a>
+                    </div>
                 </div>
             </div>
         </section>
@@ -91,16 +123,110 @@
                 </div>
 
                 <div id="admin-projects" class="admin-sub-view hidden">
-                    <h2 class="text-2xl font-semibold text-gray-700 mb-4">Gestión de Proyectos (Simulado)</h2>
-                    <p class="text-gray-600">En un sistema real, aquí estaría el CRUD completo de Proyectos. Los datos mostrados abajo se usan para generar los reportes del cliente.</p>
-                    <div id="projects-list" class="mt-4 overflow-x-auto shadow-md rounded-lg"></div>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold text-gray-700">Gestión de Proyectos</h2>
+                    <button id="add-project-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-md transition duration-150">
+                        Añadir Proyecto
+                    </button>
                 </div>
+
+                <form id="project-form" class="bg-gray-100 p-4 rounded-lg mb-6 hidden">
+                    <h3 class="font-bold mb-3">Crear/Editar Proyecto</h3>
+                    <input type="hidden" id="project-id">
+                    <div class="mb-3">
+                        <label for="project-name-input" class="block text-sm font-medium text-gray-700">Nombre del Proyecto</label>
+                        <input type="text" id="project-name-input" required class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                    <div class="mb-3">
+                        <label for="project-client-select" class="block text-sm font-medium text-gray-700">Cliente</label>
+                        <select id="project-client-select" required class="w-full px-3 py-2 border rounded-lg">
+                            <!-- Opciones dinámicas -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="project-value-input" class="block text-sm font-medium text-gray-700">Valor Total</label>
+                        <input type="number" id="project-value-input" required class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                    <div class="mb-3">
+                        <label for="project-status-select" class="block text-sm font-medium text-gray-700">Estado</label>
+                        <select id="project-status-select" required class="w-full px-3 py-2 border rounded-lg">
+                            <option value="Sin Comenzar">Sin Comenzar</option>
+                            <option value="En Progreso">En Progreso</option>
+                            <option value="Terminado">Terminado</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm">Guardar Proyecto</button>
+                    <button type="button" id="cancel-project-form" class="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-lg text-sm ml-2">Cancelar</button>
+                </form>
+
+                <div class="overflow-x-auto shadow-md rounded-lg">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="projects-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
                 
-                <div id="admin-payments" class="admin-sub-view hidden">
-                    <h2 class="text-2xl font-semibold text-gray-700 mb-4">Registro de Pagos (Simulado)</h2>
-                    <p class="text-gray-600">Aquí se registrarían los pagos por proyecto. La lógica de pasarelas de pago está excluida.</p>
-                    <div id="payments-list" class="mt-4 overflow-x-auto shadow-md rounded-lg"></div>
+            <div id="admin-payments" class="admin-sub-view hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold text-gray-700">Gestión de Pagos</h2>
+                    <button id="add-payment-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-md transition duration-150">
+                        Añadir Pago
+                    </button>
                 </div>
+
+                <form id="payment-form" class="bg-gray-100 p-4 rounded-lg mb-6 hidden">
+                    <h3 class="font-bold mb-3">Crear/Editar Pago</h3>
+                    <input type="hidden" id="payment-id">
+                    <div class="mb-3">
+                        <label for="payment-project-select" class="block text-sm font-medium text-gray-700">Proyecto</label>
+                        <select id="payment-project-select" required class="w-full px-3 py-2 border rounded-lg">
+                            <!-- Opciones dinámicas -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment-amount-input" class="block text-sm font-medium text-gray-700">Monto</label>
+                        <input type="number" id="payment-amount-input" required class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment-date-input" class="block text-sm font-medium text-gray-700">Fecha</label>
+                        <input type="date" id="payment-date-input" required class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment-status-select" class="block text-sm font-medium text-gray-700">Estado</label>
+                        <select id="payment-status-select" required class="w-full px-3 py-2 border rounded-lg">
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="Completado">Completado</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm">Guardar Pago</button>
+                    <button type="button" id="cancel-payment-form" class="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-lg text-sm ml-2">Cancelar</button>
+                </form>
+
+                <div class="overflow-x-auto shadow-md rounded-lg">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proyecto</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payments-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
 
                 <div id="admin-logs" class="admin-sub-view hidden">
                     <h2 class="text-2xl font-semibold text-gray-700 mb-4">Logs de Auditoría</h2>
@@ -177,7 +303,17 @@
         </section>
 
     </div>
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
+        const SUPABASE_URL = 'https://vqryfcnsbigclaxhkhra.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxcnlmY25zYmlnY2xheGhraHJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM0MzIsImV4cCI6MjA3NzY3OTQzMn0.iiDthlXg6upIkCnklCcpYryVhj5yRIPS47qTQKHgXHs'
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+        // ejemplo sencillo
+        window.supabase = supabase
+        console.log('Supabase inicializado')
+    </script>
     <script src="js/script.js"></script>
 </body>
 </html>

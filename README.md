@@ -96,3 +96,75 @@ Lista de funcionalidades y mejoras planificadas para futuras versiones.
 ### Mejoras Generales
 - [ ] Escribir pruebas unitarias para las funciones críticas (autenticación, cálculos financieros, etc.).
 - [ ] Mejorar la validación de formularios tanto en el cliente como en el servidor.
+
+
+# 🗄️ Esquema de Base de Datos
+
+El proyecto utiliza **PostgreSQL** a través de **Supabase DB**. El esquema ha sido diseñado para centralizar la gestión de clientes, proyectos, pagos y el registro de actividad, facilitando el sistema de reportes financieros y el acceso mediante tokens temporales.
+
+---
+
+## 💾 Scripts de Creación (Supabase/PostgreSQL)
+
+El siguiente script define todas las tablas necesarias, incluyendo claves primarias (`PK`), claves foráneas (`FK`) y las restricciones de unicidad (`UNIQUE`).
+
+```sql
+-- Creación de la base de datos para Plataforma de Reportes Financieros para Clientes
+
+-- 1. Tabla: clients (clientes)
+CREATE TABLE clients (
+    client_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL, -- Email para envío de links temporales
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 2. Tabla: projects (proyectos)
+CREATE TABLE projects (
+    project_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES clients(client_id) ON DELETE CASCADE, -- Relación con la tabla clients
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    total_amount NUMERIC(10, 2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'activo', -- Criterio de aceptación: (activos/cerrados)
+    start_date DATE,
+    end_date DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 3. Tabla: payments (pagos)
+CREATE TABLE payments (
+    payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(project_id) ON DELETE CASCADE, -- Relación con la tabla projects
+    amount NUMERIC(10, 2) NOT NULL,
+    payment_date DATE NOT NULL,
+    details TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 4. Tabla: access_tokens (tokens de acceso temporal)
+-- Usada para la autenticación del cliente (link temporal de 24h).
+CREATE TABLE access_tokens (
+    token_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+    token_value TEXT UNIQUE NOT NULL, -- Clave única y no nula para el enlace
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL, -- La expiración debe ser validada (24 horas)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 5. Tabla: logs (registro de actividad)
+CREATE TABLE logs (
+    log_id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY, -- ID autoincremental
+    user_id UUID, -- ID del administrador (referencia a la tabla auth.users de Supabase)
+    action_type VARCHAR(100) NOT NULL, -- Ej: 'LOGIN', 'CREATE_CLIENT', 'GENERATE_LINK'
+    description TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- Índices para optimizar consultas:
+CREATE INDEX idx_projects_client_id ON projects(client_id);
+CREATE INDEX idx_payments_project_id ON payments(project_id);
+CREATE INDEX idx_access_tokens_client_id ON access_tokens(client_id);
+CREATE INDEX idx_logs_timestamp ON logs(timestamp);
