@@ -105,31 +105,7 @@ financial-reports-app
 
 - No hay bugs críticos conocidos actualmente.
 
----
 
-## Tareas Pendientes
-
-### Backend y Seguridad
-- [ ] Backend real (Node.js/Python) con base de datos.
-- [ ] JWT firmados en lugar de Base64.
-- [ ] Endpoints de API seguros para CRUD.
-
-### Funcionalidades del Administrador
-- [ ] CRUD completo para Proyectos.
-- [ ] CRUD completo para Pagos.
-- [ ] Filtros y búsqueda en tablas.
-- [ ] Paginación en listados.
-
-### Funcionalidades del Cliente
-- [ ] Integrar pasarela de pagos (Stripe/PayPal).
-- [ ] Descarga de facturas en PDF.
-- [ ] Mejoras UI con gráficos (Chart.js).
-
-### Mejora General
-- [ ] Pruebas unitarias (autenticación, cálculos).
-- [ ] Validación robusta de formularios (cliente/servidor).
-
----
 
 ## Base de Datos (DDL)
 
