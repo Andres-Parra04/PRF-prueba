@@ -499,6 +499,14 @@ const App = {
         let error;
         let successMessage = '';
 
+        // Obtener la sesión actual para asegurar que el token se envía
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (!session) {
+            showNotification('Error: No hay sesión activa. Por favor, inicie sesión de nuevo.', 'error');
+            App.Auth.logout();
+            return;
+        }
+
         if (id) { // Editar proyecto existente
             const { error: updateError } = await window.supabase
                 .from('projects')
@@ -560,6 +568,14 @@ const App = {
         }
         if (projectIndex > -1 && confirm('¿Está seguro de que desea eliminar este proyecto?')) {
             const projectName = App.state.projects[projectIndex].name;
+
+            // Obtener la sesión actual para asegurar que el token se envía
+            const { data: { session } } = await window.supabase.auth.getSession();
+            if (!session) {
+                showNotification('Error: No hay sesión activa. Por favor, inicie sesión de nuevo.', 'error');
+                App.Auth.logout();
+                return;
+            }
 
             const { error } = await window.supabase
                 .from('projects')
@@ -631,6 +647,14 @@ const App = {
             const amount = parseFloat(document.getElementById('payment-amount-input').value);
             const payment_date = document.getElementById('payment-date-input').value;
             const status = document.getElementById('payment-status-select').value;
+
+            // Obtener la sesión actual para asegurar que el token se envía
+            const { data: { session } } = await window.supabase.auth.getSession();
+            if (!session) {
+                showNotification('Error: No hay sesión activa. Por favor, inicie sesión de nuevo.', 'error');
+                App.Auth.logout();
+                return;
+            }
 
             // Validar la fecha del pago
             const today = new Date();
@@ -729,6 +753,14 @@ const App = {
         console.log(`Eliminando pago con ID: ${id}`);
     const paymentIndex = App.state.payments.findIndex(p => p.id === Number(id));
     if (paymentIndex > -1 && confirm('¿Está seguro de que desea eliminar este pago?')) {
+        // Obtener la sesión actual para asegurar que el token se envía
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (!session) {
+            showNotification('Error: No hay sesión activa. Por favor, inicie sesión de nuevo.', 'error');
+            App.Auth.logout();
+            return;
+        }
+
         const { error } = await window.supabase
             .from('payments')
             .delete()
