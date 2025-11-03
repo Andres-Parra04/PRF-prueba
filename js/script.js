@@ -24,8 +24,30 @@ const App = {
         if (paymentsError) console.error('Error fetching payments:', paymentsError);
         this.state.payments = paymentsData || [];
 
-        // Los logs pueden seguir en localStorage o moverse a una tabla de Supabase si lo prefieres
-        this.state.logs = JSON.parse(localStorage.getItem('logs')) || [];
+        // Logs vienen de la tabla 'logs' en Supabase (esquema: log_id, user_id, action_type, description, timestamp)
+        try {
+            const { data: logsData, error: logsError } = await window.supabase
+                .from('logs')
+                .select('log_id, user_id, action_type, description, timestamp')
+                .order('timestamp', { ascending: false })
+                .limit(100);
+
+            if (logsError) {
+                console.error('Error fetching logs:', logsError);
+                this.state.logs = [];
+            } else {
+                this.state.logs = (logsData || []).map(l => ({
+                    id: l.log_id,
+                    timestamp: l.timestamp ? new Date(l.timestamp).toLocaleString() : new Date().toLocaleString(),
+                    action: l.action_type || '',
+                    description: l.description || '',
+                    user_id: l.user_id || null
+                }));
+            }
+        } catch (e) {
+            console.error('Error loading logs from Supabase:', e);
+            this.state.logs = [];
+        }
 
         this.bindEvents();
         // Enrutamiento inicial basado en la URL
@@ -56,9 +78,9 @@ const App = {
             if (!button) return; // No se hizo clic en un botón
 
             const action = button.dataset.action;
-            const id = button.dataset.id;
-
-            if (!id) return; // Salir si no hay un ID
+            const idRaw = button.dataset.id;
+            const id = idRaw ? Number(idRaw) : NaN;
+            if (isNaN(id)) return; // salir si id inválido
 
             if (action === 'edit-client') {
                 App.Admin.editClient(id);
@@ -77,7 +99,9 @@ const App = {
             if (!button) return;
 
             const action = button.dataset.action;
-            const id = button.dataset.id;
+            const idRaw = button.dataset.id;
+            const id = idRaw ? Number(idRaw) : NaN;
+            if (isNaN(id)) return; // proteger contra ids inválidos
 
             if (action === 'edit-project') {
                 App.Admin.editProject(id);
@@ -236,10 +260,22 @@ const App = {
         toggleClientForm(reset = true) {
             const form = document.getElementById('client-form');
             form.classList.toggle('hidden');
+
+            // Ocultar/mostrar botón "Añadir Cliente" mientras el formulario esté visible
+            const addBtn = document.getElementById('add-client-btn');
+            if (addBtn) {
+                if (!form.classList.contains('hidden')) {
+                    addBtn.classList.add('hidden');
+                } else {
+                    addBtn.classList.remove('hidden');
+                }
+            }
+
             if (reset) {
                 form.reset();
                 document.getElementById('client-id').value = '';
             }
+
         },
     
         async saveClient(event) {
@@ -267,7 +303,7 @@ const App = {
             }
 
             if (error) {
-                alert(`Error al guardar el cliente: ${error.message}`);
+                showNotification(`Error al guardar el cliente: ${error.message}`);
                 App.Logger.log(`Error al guardar cliente: ${error.message}`);
             } else {
                 App.Logger.log(successMessage);
@@ -286,7 +322,12 @@ const App = {
             }
         },
         editClient(id) {
+            id = Number(id);
             const client = App.state.clients.find(c => c.id === id);
+            if (!client) {
+                console.error(`No se encontró el cliente con ID: ${id}`);
+                return;
+            }
             if (client) {
                 // Asegurarse de que el formulario esté visible antes de rellenarlo
                 const form = document.getElementById('client-form');
@@ -303,6 +344,10 @@ const App = {
 
         async deleteClient(id) {
             const clientIndex = App.state.clients.findIndex(c => c.id === id);
+            if (clientIndex === -1) {
+                console.error(`No se encontró el cliente con ID: ${id}`);
+                return;
+            }
             if (clientIndex > -1 && confirm('¿Está seguro de que desea eliminar este cliente?')) {
                 const clientName = App.state.clients[clientIndex].name;
 
@@ -313,13 +358,13 @@ const App = {
                     .eq('clientId', id);
 
                 if (projectsError) {
-                    alert(`Error al verificar proyectos asociados: ${projectsError.message}`);
+                    showNotification(`Error al verificar proyectos asociados: ${projectsError.message}`);
                     App.Logger.log(`Error al verificar proyectos para el cliente '${clientName}': ${projectsError.message}`);
                     return; // Detener la ejecución si hay un error
                 }
 
                 if (projects && projects.length > 0) {
-                    alert('No se puede eliminar este cliente porque tiene proyectos asociados. Por favor, elimine o reasigne los proyectos primero.');
+                    showNotification('No se puede eliminar este cliente porque tiene proyectos asociados. Por favor, elimine o reasigne los proyectos primero.');
                     App.Logger.log(`Intento fallido de eliminar cliente '${clientName}' con proyectos asociados.`);
                     return; // Detener la eliminación
                 }
@@ -331,7 +376,7 @@ const App = {
                     .eq('id', id);
 
                 if (error) {
-                    alert(`Error al eliminar el cliente: ${error.message}`);
+                    showNotification(`Error al eliminar el cliente: ${error.message}`);
                     App.Logger.log(`Error al eliminar cliente '${clientName}': ${error.message}`);
                 } else {
                     // Eliminar del estado local y re-renderizar
@@ -384,6 +429,16 @@ const App = {
             document.getElementById('project-id').value = '';
         }
 
+        // Ocultar/mostrar botón "Añadir Proyecto" mientras el formulario esté visible
+        const addBtn = document.getElementById('add-project-btn');
+        if (addBtn) {
+            if (!form.classList.contains('hidden')) {
+                addBtn.classList.add('hidden');
+            } else {
+                addBtn.classList.remove('hidden');
+            }
+        }
+
         // Rellenar el selector de clientes
         const clientSelect = document.getElementById('project-client-select');
         clientSelect.innerHTML = App.state.clients.map(client => `
@@ -418,7 +473,7 @@ const App = {
         }
 
         if (error) {
-            alert(`Error al guardar el proyecto: ${error.message}`);
+            showNotification(`Error al guardar el proyecto: ${error.message}`);
             App.Logger.log(`Error al guardar proyecto: ${error.message}`);
         } else {
             App.Logger.log(successMessage);
@@ -434,7 +489,12 @@ const App = {
     },
 
     editProject(id) {
+        id = Number(id);
         const project = App.state.projects.find(p => p.id === id);
+        if (!project) {
+            console.error(`No se encontró el proyecto con ID: ${id}`);
+            return;
+        }
         if (project) {
             const form = document.getElementById('project-form');
             if (form.classList.contains('hidden')) {
@@ -449,8 +509,13 @@ const App = {
         }
     },
 
-    async deleteProject(id) {
+     async deleteProject(id) {
+        id = Number(id);
         const projectIndex = App.state.projects.findIndex(p => p.id === id);
+        if (projectIndex === -1) {
+            console.error(`No se encontró el proyecto con ID: ${id}`);
+            return;
+        }
         if (projectIndex > -1 && confirm('¿Está seguro de que desea eliminar este proyecto?')) {
             const projectName = App.state.projects[projectIndex].name;
 
@@ -460,7 +525,7 @@ const App = {
                 .eq('id', id);
 
             if (error) {
-                alert(`Error al eliminar el proyecto: ${error.message}`);
+                showNotification(`Error al eliminar el proyecto: ${error.message}`);
                 App.Logger.log(`Error al eliminar proyecto '${projectName}': ${error.message}`);
             } else {
                 App.state.projects.splice(projectIndex, 1);
@@ -498,6 +563,16 @@ const App = {
         if (reset) {
             form.reset();
             document.getElementById('payment-id').value = '';
+        }
+
+        // Ocultar/mostrar botón "Añadir Pago" mientras el formulario esté visible
+        const addBtn = document.getElementById('add-payment-btn');
+        if (addBtn) {
+            if (!form.classList.contains('hidden')) {
+                addBtn.classList.add('hidden');
+            } else {
+                addBtn.classList.remove('hidden');
+            }
         }
 
         // Rellenar el selector de proyectos
@@ -616,7 +691,7 @@ const App = {
             .eq('id', id);
 
         if (error) {
-            alert(`Error al eliminar el pago: ${error.message}`);
+            showNotification(`Error al eliminar el pago: ${error.message}`);
             App.Logger.log(`Error al eliminar pago (ID: ${id}): ${error.message}`);
         } else {
             // Eliminar el pago del estado local y volver a renderizar la tabla
@@ -630,7 +705,13 @@ const App = {
         // --- Logs ---
         renderLogs() {
             const list = document.getElementById('logs-list');
-            list.innerHTML = App.state.logs.map(log => `<li><span class="text-gray-500">${log.timestamp}:</span> ${log.message}</li>`).join('');
+            list.innerHTML = App.state.logs.map(log => {
+                // Mostrar email del admin actual si coincide, si no mostrar user_id
+                const userLabel = (log.user_id && App.state.currentUser && log.user_id === App.state.currentUser.id) ?
+                    App.state.currentUser.email :
+                    (log.user_id || 'sistema');
+                return `<li><span class="text-gray-500">${log.timestamp}:</span> <strong class="ml-2">${log.action}</strong> - ${log.description} <span class="text-xs text-gray-400 ml-2">(${userLabel})</span></li>`;
+            }).join('');
         }
     },
 
@@ -756,20 +837,88 @@ const App = {
 
     // Módulo de logging
     Logger: {
-        log(message) {
-            const logEntry = {
-                timestamp: new Date().toLocaleString(),
-                message: message
-            };
-            App.state.logs.unshift(logEntry); // Añadir al principio
-            if (App.state.logs.length > 100) { // Limitar a 100 entradas
-                App.state.logs.pop();
+        async log(actionOrDescription, maybeDescription) {
+            // Compatibilidad: App.Logger.log("mensaje") o App.Logger.log("ACTION", "desc")
+            let actionType = 'info';
+            let description = '';
+
+            if (typeof actionOrDescription === 'string' && !maybeDescription) {
+                description = actionOrDescription;
+
+                // Inferir actionType a partir del texto (palabras clave en español)
+                const d = description.toLowerCase();
+
+                const rules = [
+                    { r: /\b(eliminad[oa]|eliminar|eliminación|borrar|borrad[oa])\b/, a: 'delete' },
+                    { r: /\b(cread[oa]|crear|nuevo|agregado|añadid[oa]|agregar)\b/, a: 'create' },
+                    { r: /\b(actualizad[oa]|actualizar|modificad[oa]|modificar|editad[oa]|editar)\b/, a: 'update' },
+                    { r: /\b(inicio de sesión|inicio sesión|sesión iniciad[oa]|login exitoso|logged in)\b/, a: 'login_success' },
+                    { r: /\b(intento de inicio|login fallid|credencial|credenciales inválidas|fall[oó]n de inicio)\b/, a: 'login_failed' },
+                    { r: /\b(cierre de sesión|logout)\b/, a: 'logout' },
+                    { r: /\b(token generado|enlace de reporte|token|link de reporte)\b/, a: 'token_generated' },
+                    { r: /\b(acceso al reporte|acceso reporte|reporte del cliente|accedi[oó]n al reporte)\b/, a: 'report_access' },
+                    { r: /\b(pago|pagos|nuevo pago|eliminar pago|actualizar pago|pago creado|pago eliminado)\b/, a: 'payment' },
+                    { r: /\b(proyecto|proyectos|nuevo proyecto|proyecto creado|proyecto eliminado)\b/, a: 'project' },
+                    { r: /\b(cliente|clientes|cliente creado|cliente eliminado)\b/, a: 'client' },
+                    { r: /\b(error|errores|excepci[oó]n|fail|failed)\b/, a: 'error' }
+                ];
+
+                for (const rule of rules) {
+                    if (rule.r.test(d)) {
+                        actionType = rule.a;
+                        break;
+                    }
+                }
+
+            } else if (typeof actionOrDescription === 'string' && typeof maybeDescription === 'string') {
+                // Se proporciona action explícito
+                actionType = actionOrDescription;
+                description = maybeDescription;
+            } else if (typeof actionOrDescription === 'object' && actionOrDescription !== null) {
+                actionType = actionOrDescription.action || 'info';
+                description = actionOrDescription.description || '';
             }
-            localStorage.setItem('logs', JSON.stringify(App.state.logs));
-            
-            // Si la vista de admin está activa, actualizar los logs en tiempo real
-            if (document.getElementById('admin-page').style.display === 'block') {
+
+            const user = App.state.currentUser;
+            const user_id = user ? user.id : null;
+
+            // Añadir localmente para UI inmediata
+            const localEntry = {
+                id: null,
+                timestamp: new Date().toLocaleString(),
+                action: actionType,
+                description,
+                user_id
+            };
+            App.state.logs.unshift(localEntry);
+            if (App.state.logs.length > 100) App.state.logs.pop();
+
+            // Actualizar vista si está activa
+            if (document.getElementById('admin-page') && document.getElementById('admin-page').style.display === 'block') {
                 App.Admin.renderLogs();
+            }
+
+            // Persistir en Supabase (tabla 'logs' con columnas: user_id, action_type, description)
+            try {
+                const { data, error } = await window.supabase
+                    .from('logs')
+                    .insert([{ user_id, action_type: actionType, description }])
+                    .select('log_id, timestamp');
+
+                if (error) {
+                    console.error('Error inserting log into Supabase:', error);
+                } else if (data && data[0]) {
+                    // actualizar la entrada local con id y timestamp devueltos por la DB
+                    App.state.logs[0].id = data[0].log_id || App.state.logs[0].id;
+                    if (data[0].timestamp) {
+                        App.state.logs[0].timestamp = new Date(data[0].timestamp).toLocaleString();
+                    }
+                    if (document.getElementById('admin-page') && document.getElementById('admin-page').style.display === 'block') {
+                        App.Admin.renderLogs();
+                    }
+                }
+            } catch (err) {
+                console.error('Unexpected error saving log to Supabase:', err);
             }
         }
     },
