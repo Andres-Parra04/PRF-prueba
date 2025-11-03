@@ -70,6 +70,17 @@ body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
         visibility: visible !important;
     }
 
+    /* Estilos para los títulos en la impresión */
+    .print-title {
+        display: block !important; /* Asegura que el título sea visible */
+        text-align: left;
+        font-size: 1.5rem; /* 24px */
+        font-weight: 700;
+        margin-bottom: 1rem; /* 16px */
+        border-bottom: 2px solid #e5e7eb; /* border-gray-200 */
+        padding-bottom: 0.5rem; /* 8px */
+    }
+
     /* Salto de página después de cada sección del reporte de admin */
     #admin-page .admin-sub-view {
         page-break-after: always;
