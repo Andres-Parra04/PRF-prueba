@@ -387,38 +387,67 @@ const App = {
             }
         },
 
-        generateToken(clientId) {
-            const expiration = Date.now() + 24 * 60 * 60 * 1000; // 24 horas
-            const tokenPayload = { clientId, exp: expiration };
-            const token = btoa(JSON.stringify(tokenPayload)); // Simulación de JWT (codificación Base64)
-            const url = `${window.location.origin}${window.location.pathname}#/report/${token}`;
+        async generateToken(clientId) {
+            // const expiration = Date.now() + (24 * 60 * 60 * 1000); // 24 horas
+            const expiration = Date.now() + (5 * 60 * 1000); // 5 minutos
             
-            App.Logger.log(`Token generado para cliente con ID: ${clientId}.`);
-            prompt("Enlace de reporte temporal (válido por 24h):", url);
+            // Este token es solo para la URL, no se guarda directamente.
+            // Usaremos un identificador único para la base de datos.
+            const uniqueTokenValue = `${Date.now()}-${Math.random().toString(36).substring(2)}`;
+            const url = `${window.location.origin}${window.location.pathname}#client/${uniqueTokenValue}`;
+
+            // Crear el registro para la base de datos
+            const tokenRecord = {
+                client_id: Number(clientId),
+                token_value: uniqueTokenValue,
+                expires_at: new Date(expiration).toISOString()
+            };
+
+            // Insertar el token en la tabla access_tokens
+            const { error } = await window.supabase
+                .from('access_tokens')
+                .insert([tokenRecord]);
+
+            if (error) {
+                console.error('Error al guardar el token de acceso:', error);
+                showNotification(`Error al generar el enlace: ${error.message}`, 'error');
+                return;
+            }
+            
+            App.Logger.log(`Token generado y guardado para el cliente ID: ${clientId}.`);
+            prompt('Copia este enlace para compartir con el cliente (válido por 24h):', url);
         },
 
         // --- Gestión de Proyectos (CRUD) ---
         renderProjectsTable() {
         const tbody = document.getElementById('projects-table-body');
         const clients = App.state.clients;
+        const payments = App.state.payments;
 
         const getClientName = (clientId) => {
             const client = clients.find(c => c.id === clientId);
             return client ? client.name : 'N/A';
         };
 
-        tbody.innerHTML = App.state.projects.map(project => `
+        tbody.innerHTML = App.state.projects.map(project => {
+            const totalPaidForProject = payments
+                .filter(p => p.projectId === project.id && p.status === 'Completado')
+                .reduce((sum, p) => sum + p.amount, 0);
+            const pendingBalance = project.totalValue - totalPaidForProject;
+
+            return `
             <tr id="project-row-${project.id}">
                 <td class="px-6 py-4 whitespace-nowrap">${project.name}</td>
                 <td class="px-6 py-4 whitespace-nowrap">${getClientName(project.clientId)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-right">$${project.totalValue.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-right font-medium ${pendingBalance > 0 ? 'text-red-600' : 'text-gray-900'}">$${pendingBalance.toFixed(2)}</td>
                 <td class="px-6 py-4 whitespace-nowrap">${project.status}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button data-action="edit-project" data-id="${project.id}" class="text-blue-600 hover:text-blue-900 mr-3">Editar</button>
                     <button data-action="delete-project" data-id="${project.id}" class="text-red-600 hover:text-red-900">Eliminar</button>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
     },
 
     toggleProjectForm(reset = true) {
@@ -651,7 +680,9 @@ const App = {
                     console.error('Error fetching payments after save:', fetchError);
                 } else {
                     App.state.payments = data;
+                    // ACTUALIZACIÓN: Re-renderizar ambas tablas para reflejar cambios en saldos.
                     this.renderPaymentsTable();
+                    this.renderProjectsTable(); 
                     this.togglePaymentForm(); // Oculta el formulario después de guardar
                     showNotification(successMessage, 'success');
                 }
@@ -720,17 +751,30 @@ const App = {
         async init(token) {
             document.getElementById('app-navbar').classList.add('hidden'); // Ocultar navbar en vista cliente
             try {
-                const payload = JSON.parse(atob(token));
-                if (payload.exp < Date.now()) {
+                // 1. Buscar el token en la base de datos
+                const { data: tokenData, error: tokenError } = await window.supabase
+                    .from('access_tokens')
+                    .select('client_id, expires_at')
+                    .eq('token_value', token)
+                    .single();
+
+                if (tokenError || !tokenData) {
+                    throw new Error('Token inválido o no encontrado.');
+                }
+
+                // 2. Verificar si el token ha expirado
+                if (new Date(tokenData.expires_at) < Date.now()) {
                     throw new Error('Token expirado.');
                 }
 
-                const client = App.state.clients.find(c => c.id === payload.clientId);
+                // 3. Encontrar al cliente usando el client_id del token
+                const client = App.state.clients.find(c => Number(c.id) === tokenData.client_id);
                 if (!client) {
-                    throw new Error('Cliente no encontrado.');
+                    throw new Error('Cliente asociado al token no encontrado.');
                 }
                 
                 App.Logger.log(`Acceso al reporte del cliente '${client.name}' (ID: ${client.id}).`);
+
                 this.renderDashboard(client);
 
             } catch (error) {
@@ -747,42 +791,74 @@ const App = {
             let totalPaid = clientPayments.reduce((sum, p) => p.status === 'Completado' ? sum + p.amount : sum, 0);
             let totalBilled = clientProjects.reduce((sum, p) => sum + p.totalValue, 0);
             const totalPending = totalBilled - totalPaid;
-            const activeProjects = clientProjects.filter(p => p.status === 'En Progreso').length;
+            
+            // Separar proyectos en activos y cerrados
+            const activeProjects = clientProjects.filter(p => p.status !== 'Terminado');
+            const closedProjects = clientProjects.filter(p => p.status === 'Terminado');
 
             // Rellenar tarjetas de resumen
             document.getElementById('report-client-name').textContent = `Reporte para ${client.name}`;
             document.getElementById('report-total-paid').textContent = `$${totalPaid.toFixed(2)}`;
             document.getElementById('report-total-pending').textContent = `$${totalPending.toFixed(2)}`;
-            document.getElementById('report-active-projects').textContent = activeProjects;
+            document.getElementById('report-active-projects').textContent = activeProjects.length;
 
-            // Rellenar tabla de proyectos
-            const projectsBody = document.getElementById('report-projects-body');
-            projectsBody.innerHTML = clientProjects.map(p => {
-                const paymentsForProject = clientPayments.filter(pay => pay.projectId === p.id && pay.status === 'Completado').reduce((sum, pay) => sum + pay.amount, 0);
+            // Función auxiliar para renderizar filas de proyectos
+            const renderProjectRow = (p, isClosed = false) => {
+                const paymentsForProject = clientPayments
+                    .filter(pay => pay.projectId === p.id && pay.status === 'Completado')
+                    .reduce((sum, pay) => sum + pay.amount, 0);
                 const pendingOnProject = p.totalValue - paymentsForProject;
-                return `
-                    <tr>
-                        <td class="px-6 py-4 whitespace-nowrap">${p.name}</td>
-                        <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'Completado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${p.status}</span></td>
-                        <td class="px-6 py-4 whitespace-nowrap text-right">$${p.totalValue.toFixed(2)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-right font-medium ${pendingOnProject > 0 ? 'text-red-600' : 'text-gray-700'}">$${pendingOnProject.toFixed(2)}</td>
-                    </tr>
-                `;
+                
+                const statusBadge = `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'Terminado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${p.status}</span>`;
+                
+                if (isClosed) {
+                    return `
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">${p.name}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${statusBadge}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right">$${p.totalValue.toFixed(2)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right font-medium text-gray-700">$${paymentsForProject.toFixed(2)}</td>
+                        </tr>
+                    `;
+                } else {
+                     return `
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">${p.name}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${statusBadge}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right">$${p.totalValue.toFixed(2)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right font-medium ${pendingOnProject > 0 ? 'text-red-600' : 'text-gray-700'}">$${pendingOnProject.toFixed(2)}</td>
+                        </tr>
+                    `;
+                }
+            };
+
+            // Rellenar tabla de proyectos activos
+            const activeProjectsBody = document.getElementById('report-active-projects-body');
+            activeProjectsBody.innerHTML = activeProjects.map(p => renderProjectRow(p, false)).join('');
+
+            // Rellenar tabla de proyectos cerrados
+            const closedProjectsBody = document.getElementById('report-closed-projects-body');
+            closedProjectsBody.innerHTML = closedProjects.map(p => renderProjectRow(p, true)).join('');
+
+
+            // Rellenar tabla de pagos (ordenados por fecha descendente)
+            const paymentsBody = document.getElementById('report-payments-body');
+            paymentsBody.innerHTML = [...clientPayments] // Clonar para no mutar el estado original
+                .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
+                .map(p => {
+                    const project = clientProjects.find(proj => proj.id === p.projectId);
+                    return `
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">${new Date(p.payment_date).toLocaleDateString()}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right">$${p.amount.toFixed(2)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${project ? project.name : 'N/A'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'Completado' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${p.status}</span></td>
+                        </tr>
+                    `;
             }).join('');
 
-            // Rellenar tabla de pagos
-            const paymentsBody = document.getElementById('report-payments-body');
-            paymentsBody.innerHTML = clientPayments.map(p => {
-                 const project = clientProjects.find(proj => proj.id === p.projectId);
-                 return `
-                    <tr>
-                        <td class="px-6 py-4 whitespace-nowrap">${new Date(p.date).toLocaleDateString()}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-right">$${p.amount.toFixed(2)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">${project ? project.name : 'N/A'}</td>
-                        <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'Completado' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${p.status}</span></td>
-                    </tr>
-                 `;
-            }).join('');
+            // Rellenar total final
+            document.getElementById('report-final-pending').textContent = `$${totalPending.toFixed(2)}`;
 
             // Ocultar carga y mostrar dashboard
             document.getElementById('client-loading-screen').classList.add('hidden');
@@ -816,11 +892,11 @@ const App = {
             document.getElementById('client-loading-screen').classList.remove('hidden');
 
 
-            if (hash.startsWith('#/report/')) {
-                const token = hash.split('/')[2];
+            if (hash.startsWith('#client/')) { // CORRECCIÓN: Cambiado de '#/report/' a '#client/'
+                const token = hash.split('/')[1]; // El token es el segundo elemento
                 document.getElementById('client-page').style.display = 'block';
                 App.Client.init(token);
-            } else if (hash === '#/admin' && user) { // <-- CAMBIO AQUÍ: Se eliminó la comprobación de user.role
+            } else if (hash === '#/admin' && user) {
                 document.getElementById('admin-page').style.display = 'block';
                 App.Admin.init();
             } else {
