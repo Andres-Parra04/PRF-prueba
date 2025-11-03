@@ -13,17 +13,18 @@ const App = {
     async init() {
         // Cargar datos desde Supabase en lugar de localStorage/mock
         const { data: clientsData, error: clientsError } = await window.supabase.from('clients').select('*');
-        if (clientsError) console.error('Error fetching clients:', clientsError);
+        if (clientsError) console.error('Error cargando clientes:', clientsError);
         this.state.clients = clientsData || [];
 
-        // CORRECCIÓN: Usar la función RPC para obtener proyectos con saldos calculados
-        const { data: projectsData, error: projectsError } = await window.supabase.rpc('get_admin_projects_view');
-        if (projectsError) console.error('Error fetching projects:', projectsError);
+        // CORRECCIÓN: Usar una consulta directa a la tabla 'projects' en lugar de la función RPC.
+        // Esto funcionará para cualquier usuario autenticado si RLS lo permite.
+        const { data: projectsData, error: projectsError } = await window.supabase.from('projects').select('*');
+        if (projectsError) console.error('Error cargando proyectos:', projectsError);
         this.state.projects = projectsData || [];
 
 
         const { data: paymentsData, error: paymentsError } = await window.supabase.from('payments').select('*');
-        if (paymentsError) console.error('Error fetching payments:', paymentsError);
+        if (paymentsError) console.error('Error cargando pagos:', paymentsError);
         this.state.payments = paymentsData || [];
 
         // Logs vienen de la tabla 'logs' en Supabase (esquema: log_id, user_id, action_type, description, timestamp)
@@ -65,6 +66,13 @@ const App = {
         if (printButton) {
             printButton.addEventListener('click', () => window.print());
         }
+
+        // --- INICIO: EVENTO PARA EL NUEVO BOTÓN DE IMPRESIÓN DEL ADMIN ---
+        const adminPrintButton = document.getElementById('admin-print-button');
+        if (adminPrintButton) {
+            adminPrintButton.addEventListener('click', () => window.print());
+        }
+        // --- FIN: EVENTO PARA EL NUEVO BOTÓN DE IMPRESIÓN DEL ADMIN ---
 
         // --- NUEVOS EVENTOS PARA REGISTRO ---
         document.getElementById('register-btn').addEventListener('click', () => this.Auth.toggleAuthView(false));
@@ -439,28 +447,29 @@ const App = {
 
         const getClientName = (clientId) => {
             const client = clients.find(c => c.id === clientId);
-            return client ? client.name : 'N/A';
+            return client ? client.name : 'Cliente no encontrado';
         };
 
+        // CORRECCIÓN: Calcular el saldo pendiente manualmente si no viene de la RPC.
         tbody.innerHTML = App.state.projects.map(project => {
-            const totalPaidForProject = payments
-                .filter(p => p.projectId === project.id && p.status === 'Completado')
-                .reduce((sum, p) => sum + p.amount, 0);
-            const pendingBalance = project.totalValue - totalPaidForProject;
+            const projectPayments = payments.filter(p => p.projectId === project.id && p.status === 'Completado');
+            const totalPaid = projectPayments.reduce((sum, p) => sum + p.amount, 0);
+            const pendingBalance = project.totalValue - totalPaid;
 
             return `
-            <tr id="project-row-${project.id}">
-                <td class="px-6 py-4 whitespace-nowrap">${project.name}</td>
-                <td class="px-6 py-4 whitespace-nowrap">${getClientName(project.clientId)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-right">$${project.totalValue.toFixed(2)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-right font-medium ${pendingBalance > 0 ? 'text-red-600' : 'text-gray-900'}">$${pendingBalance.toFixed(2)}</td>
-                <td class="px-6 py-4 whitespace-nowrap">${project.status}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button data-action="edit-project" data-id="${project.id}" class="text-blue-600 hover:text-blue-900 mr-3">Editar</button>
-                    <button data-action="delete-project" data-id="${project.id}" class="text-red-600 hover:text-red-900">Eliminar</button>
-                </td>
-            </tr>
-        `}).join('');
+                <tr id="project-row-${project.id}">
+                    <td class="px-6 py-4 whitespace-nowrap">${project.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${getClientName(project.clientId)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right">$${project.totalValue.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right">$${pendingBalance.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${project.status}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button data-action="edit-project" data-id="${project.id}" class="text-blue-600 hover:text-blue-900 mr-3">Editar</button>
+                        <button data-action="delete-project" data-id="${project.id}" class="text-red-600 hover:text-red-900">Eliminar</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
     },
 
     toggleProjectForm(reset = true) {
@@ -835,7 +844,7 @@ const App = {
 
             // Rellenar tarjetas de resumen con los totales ya calculados por la función
             document.getElementById('report-client-name').textContent = `Reporte para ${client.name}`;
-            document.getElementById('report-total-paid').textContent = `$${totals.total_paid.toFixed(2)}`;
+            document.getElementById('report-total-paid').textContent = `$${(totals.total_paid || 0).toFixed(2)}`;
             document.getElementById('report-total-pending').textContent = `$${totalPendingFromProjects.toFixed(2)}`;
             document.getElementById('report-active-projects').textContent = activeProjects.length;
 

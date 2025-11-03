@@ -234,6 +234,67 @@ REFERENCES public.clients(id)
 ON DELETE CASCADE;
 ```
 
+### Políticas de Row-Level Security (RLS)
+
+Se habilitó Row-Level Security (RLS) y se crearon políticas para las tablas `public.projects`, `public.clients` y `public.payments` de forma que solo usuarios autenticados (rol `authenticated`) puedan realizar operaciones sobre estas tablas. Estas políticas permiten CRUD completo a cualquier usuario autenticado, ya que no se utiliza una columna `owner_id`.
+
+**1) Tabla: `public.projects`**
+- **Nombre de la política:** `projects_crud`
+- **Objetivo:** Permitir que únicamente usuarios autenticados realicen operaciones (SELECT, INSERT, UPDATE, DELETE).
+- **Tipo de política:** `FOR ALL`
+- **Rol objetivo:** `authenticated`
+
+```sql
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY projects_crud
+  ON public.projects
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+```
+
+**2) Tabla: `public.clients`**
+- **Nombre de la política:** `clients_crud`
+- **Objetivo:** Permitir que únicamente usuarios autenticados realicen operaciones (SELECT, INSERT, UPDATE, DELETE).
+- **Tipo de política:** `FOR ALL`
+- **Rol objetivo:** `authenticated`
+
+```sql
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY clients_crud
+  ON public.clients
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+```
+
+**3) Tabla: `public.payments`**
+- **Nombre de la política:** `payments_crud`
+- **Objetivo:** Permitir que únicamente usuarios autenticados realicen operaciones (SELECT, INSERT, UPDATE, DELETE).
+- **Tipo de política:** `FOR ALL`
+- **Rol objetivo:** `authenticated`
+
+```sql
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY payments_crud
+  ON public.payments
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+```
+
+#### Recomendaciones y notas operativas
+- Indexa las columnas que eventualmente usarás en políticas (`user_id`, `client_id`, etc.) para evitar degradación de rendimiento.
+- La `service_role` (clave del servidor) ignora RLS; las operaciones hechas con esa clave no están sujetas a estas políticas.
+- Prueba las políticas con diferentes cuentas (autenticadas y no autenticadas) para validar el comportamiento.
+- Para recrear una política, primero elimínala con `DROP POLICY policy_name ON schema.table;`.
+
 ---
 
 ## Documentación de API (Edge Functions)

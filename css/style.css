@@ -36,7 +36,13 @@ body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
 /* Estilos de impresión para el reporte */
 @media print {
     /* Oculta elementos no deseados en el PDF */
-    .no-print, #app-navbar, .print-button {
+    .no-print, #app-navbar, .print-button, #admin-tabs, #admin-print-button, form, #admin-logs {
+        display: none !important;
+    }
+
+    /* Ocultar la última columna (Acciones) de todas las tablas */
+    th:last-child,
+    td:last-child {
         display: none !important;
     }
 
@@ -49,9 +55,19 @@ body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
         min-height: auto;
     }
 
-    /* Asegura que solo el dashboard del cliente sea visible */
-    #client-dashboard {
+    /* Asegura que solo el dashboard del cliente o las vistas de admin sean visibles */
+    #client-dashboard,
+    #admin-page .admin-sub-view {
         display: block !important;
+        visibility: visible !important;
+    }
+
+    /* Salto de página después de cada sección del reporte de admin */
+    #admin-page .admin-sub-view {
+        page-break-after: always;
+    }
+    #admin-page .admin-sub-view:last-of-type {
+        page-break-after: auto;
     }
 
     /* Elimina márgenes y sombras de las tarjetas para un look más limpio */
