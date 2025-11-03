@@ -168,3 +168,145 @@ CREATE INDEX idx_projects_client_id ON projects(client_id);
 CREATE INDEX idx_payments_project_id ON payments(project_id);
 CREATE INDEX idx_access_tokens_client_id ON access_tokens(client_id);
 CREATE INDEX idx_logs_timestamp ON logs(timestamp);
+```
+## 🚀 Edge Function: `payments-crud` (API RESTful)
+
+Pequeña API RESTful para gestionar la tabla `payments` en Supabase. Esta función usa la clave de rol de servicio (`SUPABASE_SERVICE_ROLE_KEY`) y debe desplegarse con permisos explícitos en Deno.
+
+### 1. Resumen
+- Endpoint (Functions v1): `https://<PROJECT_REF>.supabase.co/functions/v1/payments-crud`
+- Autenticación: Usar la clave de servicio en el header `Authorization: Bearer <SERVICE_ROLE_KEY>` (esta clave debe mantenerse en el servidor, no en el cliente).
+- Tipos de contenido: `application/json`
+
+---
+
+### 2. Variables de entorno
+La función utiliza estas variables de entorno (ya definidas por Supabase):
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+---
+
+### 3. Despliegue (CLI de Supabase)
+Para evitar errores por permisos de Deno (acceso a env y a la red), despliega con las banderas indicadas. Reemplaza `<PROJECT_REF>` por el ref de tu proyecto:
+
+```bash
+supabase functions deploy payments-crud \
+  --no-verify-jwt \
+  --allow-env \
+  --allow-net="<PROJECT_REF>.supabase.co,cdn.skypack.dev"
+```
+
+Nota: sólo use `cdn.skypack.dev` si su función importa desde ese host. Si no, omítalo para restringir permisos.
+
+---
+
+### 4. Estructura del objeto `payment` (JSON)
+Campos esperados para POST/PUT:
+
+```json
+{
+  "id": number,            // Requerido sólo para PUT/DELETE
+  "projectId": number,     // required (POST)
+  "amount": number,        // required (POST)
+  "payment_date": "YYYY-MM-DD", // required (POST)
+  "details": "string|null",// optional
+  "status": "Pendiente|Completado|..." // required (POST)
+}
+```
+
+Campos controlados por la DB (no enviar en POST): `created_at`, `id` (si DB genera autoincrement).
+
+---
+
+### 5. Cabeceras obligatorias
+- Content-Type: application/json
+- Authorization: Bearer <SERVICE_ROLE_KEY> (o la clave que uses para la función)
+
+---
+
+### 6. Métodos soportados (CRUD) y ejemplos
+
+- Leer todos los pagos — GET  
+  Request: GET sin body  
+  Respuesta: 200 OK — JSON array de objetos `payment`.
+
+  Ejemplo curl:
+  ```bash
+  curl -X GET "https://<PROJECT_REF>.supabase.co/functions/v1/payments-crud" \
+    -H "Authorization: Bearer <SERVICE_ROLE_KEY>"
+  ```
+
+- Crear un pago — POST  
+  Request: JSON con campos necesarios. Respuesta: 201 Created
+
+  Body ejemplo:
+  ```json
+  {
+    "projectId": 1,
+    "amount": 40.00,
+    "payment_date": "2025-11-01",
+    "details": "Pago inicial de la factura 1234",
+    "status": "Pendiente"
+  }
+  ```
+
+  Ejemplo curl:
+  ```bash
+  curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/payments-crud" \
+    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \
+    -H "Content-Type: application/json" \
+    -d '{"projectId":1,"amount":40,"payment_date":"2025-11-01","details":"Pago inicial","status":"Pendiente"}'
+  ```
+
+- Actualizar un pago — PUT  
+  Request: JSON que incluya `id` y los campos a actualizar. Respuesta: 200 OK
+
+  Body ejemplo:
+  ```json
+  {
+    "id": 42,
+    "amount": 60.50,
+    "status": "Completado"
+  }
+  ```
+
+  Ejemplo curl:
+  ```bash
+  curl -X PUT "https://<PROJECT_REF>.supabase.co/functions/v1/payments-crud" \
+    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \
+    -H "Content-Type: application/json" \
+    -d '{"id":42,"amount":60.5,"status":"Completado"}'
+  ```
+
+- Eliminar un pago — DELETE  
+  Request: JSON con `id`. Respuesta: 200 OK
+
+  Body ejemplo:
+  ```json
+  { "id": 42 }
+  ```
+
+  Ejemplo curl:
+  ```bash
+  curl -X DELETE "https://<PROJECT_REF>.supabase.co/functions/v1/payments-crud" \
+    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \
+    -H "Content-Type: application/json" \
+    -d '{"id":42}'
+  ```
+
+---
+
+### 7. Errores comunes y solución rápida
+- "Unexpected end of JSON input": el body de la request está vacío o no es JSON válido.  
+  - Verifica que `Content-Type: application/json` esté presente.  
+  - Asegura que el body no esté vacío y sea JSON válido (Thunder Client → Body → Raw JSON).
+
+- Errores de import/permiso en el deploy: añade `--allow-env` y `--allow-net` al comando de deploy, o evita importaciones desde CDNs que requieran permiso de red.
+
+---
+
+### 8. Buenas prácticas
+- No exponer `SUPABASE_SERVICE_ROLE_KEY` en el frontend.  
+- Validar entradas en la función antes de ejecutar queries.  
+- Registrar acciones críticas en la tabla `logs` (si procede).
