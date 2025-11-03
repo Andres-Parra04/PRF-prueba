@@ -461,31 +461,77 @@ curl -X GET "https://<PROJECT_REF>.supabase.co/functions/v1/logs-reader" \
 
 ---
 
-### get-client-data (Datos del cliente — Pública)
-- Endpoint: https://<PROJECT_REF>.supabase.co/functions/v1/get-client-data
-- Método: POST
-- Auth: Pública (valida token en body)
+## Edge Function: `get-client-data`
 
-Body:
+Esta función de Supabase sirve como un endpoint público y seguro para que los clientes puedan ver sus reportes financieros a través de un enlace temporal.
+
+### Flujo de Operación
+
+1.  **Recepción de Token**: La función espera una petición `POST` con un token de acceso temporal en el cuerpo (body).
+2.  **Manejo de CORS**: La función está configurada para manejar peticiones Cross-Origin (CORS) desde cualquier origen (`*`). Responde correctamente a las peticiones de pre-vuelo `OPTIONS` del navegador, lo cual es crucial para que las aplicaciones web de front-end puedan consumirla.
+3.  **Validación de Token**:
+    *   Busca el token en la tabla `access_tokens`.
+    *   Verifica que el token exista y no haya expirado.
+    *   Si el token es inválido o ha expirado, devuelve un error `401 Unauthorized`.
+4.  **Obtención de Datos**:
+    *   Si el token es válido, extrae el `client_id` asociado.
+    *   Invoca la función de base de datos PostgreSQL `get_client_dashboard_data(client_id)`.
+5.  **Función RPC (`get_client_dashboard_data`)**:
+    *   Esta función de base de datos recibe el `client_id` (de tipo `bigint`).
+    *   Consulta las tablas `clients`, `projects` y `payments` para recopilar toda la información del cliente.
+    *   Calcula los totales (`total_paid` y `total_pending`), manejando correctamente los nombres de columna con mayúsculas como `"totalValue"` para evitar errores.
+    *   Agrupa todos los datos en un único objeto JSON.
+6.  **Respuesta Final**: La Edge Function devuelve el objeto JSON completo con un estado `200 OK` y las cabeceras CORS correspondientes.
+
+---
+
+### Detalles del Endpoint
+
+-   **Endpoint**: `https://<PROJECT_REF>.supabase.co/functions/v1/get-client-data`
+-   **Método**: `POST`
+-   **Auth**: Pública. La autorización se maneja internamente a través del token en el body.
+
+#### Body de la Petición
+
 ```json
-{ "token": "uuid-del-link-temporal" }
+{
+  "token": "uuid-del-link-temporal"
+}
 ```
 
-Respuesta (200):
+#### Respuesta Exitosa (200 OK)
+
+Devuelve un objeto JSON que contiene los datos del cliente, sus proyectos, pagos y los totales calculados.
+
 ```json
 {
   "client": { "id": 1, "name": "..." },
-  "projects": [ { "id": 10, "name": "...", "total_cost": 1000 } ],
-  "payments": [ { "id": 42, "amount": 500, "projectId": 10 } ],
+  "projects": [ { "id": 10, "name": "...", "totalValue": 1000, "status": "Activo" } ],
+  "payments": [ { "id": 42, "amount": 500, "projectId": 10, "status": "Completado" } ],
   "totals": { "total_paid": 500, "total_pending": 500 }
 }
 ```
 
+#### Respuestas de Error
+
+-   **401 Unauthorized**: Si el token es inválido o ha expirado.
+    ```json
+    { "error": "Acceso inválido o expirado." }
+    ```
+-   **400 Bad Request**: Si ocurre un error interno, como un problema con la función RPC. El mensaje de error detallado se incluye para facilitar la depuración.
+    ```json
+    { "error": "RPC error: <detalle del error>" }
+    ```
+
+#### Ejemplo de uso con cURL
+
 ```bash
 curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/get-client-data" \
   -H "Content-Type: application/json" \
+  -H "apikey: <SUPABASE_ANON_KEY>" \
   -d '{"token":"uuid-del-link-temporal"}'
 ```
+
 
 ---
 

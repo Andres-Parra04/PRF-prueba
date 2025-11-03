@@ -16,9 +16,11 @@ const App = {
         if (clientsError) console.error('Error fetching clients:', clientsError);
         this.state.clients = clientsData || [];
 
-        const { data: projectsData, error: projectsError } = await window.supabase.from('projects').select('*');
+        // CORRECCIÓN: Usar la función RPC para obtener proyectos con saldos calculados
+        const { data: projectsData, error: projectsError } = await window.supabase.rpc('get_admin_projects_view');
         if (projectsError) console.error('Error fetching projects:', projectsError);
         this.state.projects = projectsData || [];
+
 
         const { data: paymentsData, error: paymentsError } = await window.supabase.from('payments').select('*');
         if (paymentsError) console.error('Error fetching payments:', paymentsError);
@@ -58,7 +60,11 @@ const App = {
     bindEvents() {
         document.getElementById('login-form').addEventListener('submit', (e) => this.Auth.handleLogin(e));
         document.getElementById('logout-btn').addEventListener('click', () => this.Auth.logout());
-        document.getElementById('print-button').addEventListener('click', () => window.print());
+        // CORRECCIÓN: Verificar si el botón de imprimir existe antes de añadir el evento.
+        const printButton = document.getElementById('print-button');
+        if (printButton) {
+            printButton.addEventListener('click', () => window.print());
+        }
 
         // --- NUEVOS EVENTOS PARA REGISTRO ---
         document.getElementById('register-btn').addEventListener('click', () => this.Auth.toggleAuthView(false));
@@ -388,8 +394,7 @@ const App = {
         },
 
         async generateToken(clientId) {
-            // const expiration = Date.now() + (24 * 60 * 60 * 1000); // 24 horas
-            const expiration = Date.now() + (5 * 60 * 1000); // 5 minutos
+            const expiration = Date.now() + (24 * 60 * 60 * 1000); // 24 horas
             
             // Este token es solo para la URL, no se guarda directamente.
             // Usaremos un identificador único para la base de datos.
@@ -751,31 +756,19 @@ const App = {
         async init(token) {
             document.getElementById('app-navbar').classList.add('hidden'); // Ocultar navbar en vista cliente
             try {
-                // 1. Buscar el token en la base de datos
-                const { data: tokenData, error: tokenError } = await window.supabase
-                    .from('access_tokens')
-                    .select('client_id, expires_at')
-                    .eq('token_value', token)
-                    .single();
+                // 1. Llamar a la función de Supabase para obtener todos los datos del cliente.
+                const { data, error } = await window.supabase.functions.invoke('get-client-data', {
+                    body: { token: token },
+                });
 
-                if (tokenError || !tokenData) {
-                    throw new Error('Token inválido o no encontrado.');
+                if (error) {
+                    // El error puede ser por token inválido, expirado, etc. La función lo maneja.
+                    throw new Error(error.message);
                 }
 
-                // 2. Verificar si el token ha expirado
-                if (new Date(tokenData.expires_at) < Date.now()) {
-                    throw new Error('Token expirado.');
-                }
+                App.Logger.log(`Acceso al reporte del cliente '${data.client.name}' (ID: ${data.client.id}).`);
 
-                // 3. Encontrar al cliente usando el client_id del token
-                const client = App.state.clients.find(c => Number(c.id) === tokenData.client_id);
-                if (!client) {
-                    throw new Error('Cliente asociado al token no encontrado.');
-                }
-                
-                App.Logger.log(`Acceso al reporte del cliente '${client.name}' (ID: ${client.id}).`);
-
-                this.renderDashboard(client);
+                this.renderDashboard(data);
 
             } catch (error) {
                 this.showError(error.message);
@@ -783,31 +776,33 @@ const App = {
             }
         },
 
-        renderDashboard(client) {
-            // Obtener datos financieros del cliente
-            const clientProjects = App.state.projects.filter(p => p.clientId === client.id);
-            const clientPayments = App.state.payments.filter(p => clientProjects.some(cp => cp.id === p.projectId));
-
-            let totalPaid = clientPayments.reduce((sum, p) => p.status === 'Completado' ? sum + p.amount : sum, 0);
-            let totalBilled = clientProjects.reduce((sum, p) => sum + p.totalValue, 0);
-            const totalPending = totalBilled - totalPaid;
+        renderDashboard(data) {
+            // Obtener datos financieros del cliente desde el objeto 'data'
+            const { client, projects, payments, totals } = data;
             
-            // Separar proyectos en activos y cerrados
-            const activeProjects = clientProjects.filter(p => p.status !== 'Terminado');
-            const closedProjects = clientProjects.filter(p => p.status === 'Terminado');
+            // Rellenar tarjeta de información del cliente (NUEVO)
+            document.querySelector('#client-card-name span').textContent = client.name || 'N/A';
+            document.querySelector('#client-card-email span').textContent = client.email || 'N/A';
+            document.querySelector('#client-card-phone span').textContent = client.phone || 'N/A';
+            document.querySelector('#client-card-address span').textContent = client.address || 'N/A';
 
-            // Rellenar tarjetas de resumen
+            // Separar proyectos en activos y cerrados
+            const activeProjects = projects.filter(p => p.status !== 'Terminado');
+            const closedProjects = projects.filter(p => p.status === 'Terminado');
+
+            // Rellenar tarjetas de resumen con los totales ya calculados por la función
             document.getElementById('report-client-name').textContent = `Reporte para ${client.name}`;
-            document.getElementById('report-total-paid').textContent = `$${totalPaid.toFixed(2)}`;
-            document.getElementById('report-total-pending').textContent = `$${totalPending.toFixed(2)}`;
+            document.getElementById('report-total-paid').textContent = `$${totals.total_paid.toFixed(2)}`;
+            document.getElementById('report-total-pending').textContent = `$${totals.total_pending.toFixed(2)}`;
             document.getElementById('report-active-projects').textContent = activeProjects.length;
 
             // Función auxiliar para renderizar filas de proyectos
             const renderProjectRow = (p, isClosed = false) => {
-                const paymentsForProject = clientPayments
-                    .filter(pay => pay.projectId === p.id && pay.status === 'Completado')
-                    .reduce((sum, pay) => sum + pay.amount, 0);
-                const pendingOnProject = p.totalValue - paymentsForProject;
+                // CORRECCIÓN: Usar el saldo pendiente que ya viene calculado desde el backend.
+                const pendingOnProject = p.pending_balance;
+
+                // Para proyectos cerrados, necesitamos el total pagado, que es el valor total menos el saldo pendiente.
+                const paymentsForProject = p.totalValue - pendingOnProject;
                 
                 const statusBadge = `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'Terminado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${p.status}</span>`;
                 
@@ -843,10 +838,10 @@ const App = {
 
             // Rellenar tabla de pagos (ordenados por fecha descendente)
             const paymentsBody = document.getElementById('report-payments-body');
-            paymentsBody.innerHTML = [...clientPayments] // Clonar para no mutar el estado original
+            paymentsBody.innerHTML = [...payments] // Clonar para no mutar el estado original
                 .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
                 .map(p => {
-                    const project = clientProjects.find(proj => proj.id === p.projectId);
+                    const project = projects.find(proj => proj.id === p.projectId);
                     return `
                         <tr>
                             <td class="px-6 py-4 whitespace-nowrap">${new Date(p.payment_date).toLocaleDateString()}</td>
@@ -858,7 +853,7 @@ const App = {
             }).join('');
 
             // Rellenar total final
-            document.getElementById('report-final-pending').textContent = `$${totalPending.toFixed(2)}`;
+            document.getElementById('report-final-pending').textContent = `$${totals.total_pending.toFixed(2)}`;
 
             // Ocultar carga y mostrar dashboard
             document.getElementById('client-loading-screen').classList.add('hidden');
@@ -869,11 +864,18 @@ const App = {
             document.getElementById('client-loading-screen').classList.add('hidden');
             const errorScreen = document.getElementById('client-error-screen');
             const errorMessage = document.getElementById('client-error-message');
+            
+            // MODIFICACIÓN: Mostrar el error real para depuración
+            // Esto nos dirá si es un error de CORS (como 'Failed to fetch') u otro problema.
+            let displayMessage = `El enlace de reporte es inválido o no se pudo conectar. Por favor, verifique el enlace o solicite uno nuevo. (Detalle: ${message})`;
+
             if (message.includes('expirado')) {
-                errorMessage.textContent = 'El enlace de reporte ha expirado (límite de 24 horas). Por favor, solicite un nuevo enlace temporal.';
-            } else {
-                errorMessage.textContent = 'El enlace de reporte es inválido o el cliente no existe. Por favor, verifique el enlace o solicite uno nuevo.';
+                displayMessage = 'El enlace de reporte ha expirado. Por favor, solicite un nuevo enlace temporal.';
+            } else if (message.includes('inválido')) {
+                displayMessage = 'El enlace de reporte es inválido. Por favor, verifique el enlace o solicite uno nuevo.';
             }
+            
+            errorMessage.textContent = displayMessage;
             errorScreen.classList.remove('hidden');
         }
     },
@@ -892,8 +894,8 @@ const App = {
             document.getElementById('client-loading-screen').classList.remove('hidden');
 
 
-            if (hash.startsWith('#client/')) { // CORRECCIÓN: Cambiado de '#/report/' a '#client/'
-                const token = hash.split('/')[1]; // El token es el segundo elemento
+            if (hash.startsWith('#client/')) {
+                const token = hash.split('/')[1];
                 document.getElementById('client-page').style.display = 'block';
                 App.Client.init(token);
             } else if (hash === '#/admin' && user) {
@@ -904,8 +906,12 @@ const App = {
                 if (user) {
                     window.location.hash = '#/admin';
                 } else {
-                    App.Auth.toggleAuthView(true); 
-                    document.getElementById('logout-btn').classList.add('hidden');
+                    // CORRECCIÓN: No redirigir si estamos en una ruta de cliente.
+                    // Esto evita que la petición a la función sea cancelada.
+                    if (!hash.startsWith('#client/')) {
+                        App.Auth.toggleAuthView(true); 
+                        document.getElementById('logout-btn').classList.add('hidden');
+                    }
                 }
             }
         }
