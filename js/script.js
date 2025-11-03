@@ -10,7 +10,7 @@ const App = {
     },
 
     // Inicialización de la aplicación
-         async init() {
+    async init() {
         // Cargar datos desde Supabase en lugar de localStorage/mock
         const { data: clientsData, error: clientsError } = await window.supabase.from('clients').select('*');
         if (clientsError) console.error('Error fetching clients:', clientsError);
@@ -95,6 +95,10 @@ const App = {
 
             const action = button.dataset.action;
             const id = button.dataset.id;
+
+            if (!id) return;
+
+            console.log(`Action: ${action}, ID: ${id}`);
 
             if (action === 'edit-payment') {
                 App.Admin.editPayment(id);
@@ -191,8 +195,8 @@ const App = {
             document.getElementById('logout-btn').classList.remove('hidden');
             this.setView(App.state.currentAdminView);
             this.renderClientsTable();
-            this.renderProjectsView();
-            this.renderPaymentsView();
+            this.renderProjectsTable();
+            this.renderPaymentsTable();
             this.renderLogs();
         },
 
@@ -504,81 +508,123 @@ const App = {
     },
 
     async savePayment(event) {
-        event.preventDefault();
-        const id = document.getElementById('payment-id').value;
-        const projectId = document.getElementById('payment-project-select').value;
-        const amount = parseFloat(document.getElementById('payment-amount-input').value);
-        const payment_date = document.getElementById('payment-date-input').value; // Cambiado de 'date' a 'payment_date'
-        const status = document.getElementById('payment-status-select').value;
+            event.preventDefault();
+            const id = document.getElementById('payment-id').value;
+            const projectId = parseInt(document.getElementById('payment-project-select').value, 10); // Convertir a número
+            const amount = parseFloat(document.getElementById('payment-amount-input').value);
+            const payment_date = document.getElementById('payment-date-input').value;
+            const status = document.getElementById('payment-status-select').value;
 
-        let error;
-        let successMessage = '';
+            // Validar la fecha del pago
+            const today = new Date();
+            const paymentDate = new Date(payment_date);
 
-        if (id) { // Editar pago existente
-            const { error: updateError } = await window.supabase
-                .from('payments')
-                .update({ projectId, amount, payment_date, status }) // Cambiado 'date' a 'payment_date'
-                .eq('id', id);
-            error = updateError;
-            if (!error) successMessage = `Pago (ID: ${id}) actualizado.`;
-        } else { // Crear nuevo pago
-            const { error: insertError } = await window.supabase
-                .from('payments')
-                .insert([{ projectId, amount, payment_date, status }]); // Cambiado 'date' a 'payment_date'
-            error = insertError;
-            if (!error) successMessage = `Nuevo pago creado.`;
-        }
-
-        if (error) {
-            alert(`Error al guardar el pago: ${error.message}`);
-            App.Logger.log(`Error al guardar pago: ${error.message}`);
-        } else {
-            App.Logger.log(successMessage);
-            const { data, error: fetchError } = await window.supabase.from('payments').select('*');
-            if (fetchError) {
-                console.error('Error fetching payments after save:', fetchError);
-            } else {
-                App.state.payments = data;
-                this.renderPaymentsTable();
-                this.togglePaymentForm(); // Oculta el formulario después de guardar
+            if (paymentDate > today) {
+                showNotification('La fecha del pago no puede ser una fecha futura.', 'error');
+                return;
             }
-        }
-    },
+
+            const fiftyYearsAgo = new Date();
+            fiftyYearsAgo.setFullYear(today.getFullYear() - 50);
+            if (paymentDate < fiftyYearsAgo) {
+                showNotification('La fecha del pago no puede ser anterior a 50 años.', 'warning');
+                return;
+            }
+
+            // Validar el monto del pago
+            const project = App.state.projects.find(p => p.id === projectId);
+            if (!project) {
+                showNotification('El proyecto seleccionado no existe.', 'error');
+                return;
+            }
+
+            if (amount <= 0) {
+                showNotification('El monto del pago debe ser mayor a 0.', 'error');
+                return;
+            }
+
+            if (amount > project.totalValue) {
+                showNotification(`El monto del pago no puede ser mayor al costo total del proyecto ($${project.totalValue.toFixed(2)}).`, 'error');
+                return;
+            }
+
+            let error;
+            let successMessage = '';
+
+            if (id) { // Editar pago existente
+                const { error: updateError } = await window.supabase
+                    .from('payments')
+                    .update({ projectId, amount, payment_date, status })
+                    .eq('id', id);
+                error = updateError;
+                if (!error) successMessage = `Pago (ID: ${id}) actualizado.`;
+            } else { // Crear nuevo pago
+                const { error: insertError } = await window.supabase
+                    .from('payments')
+                    .insert([{ projectId, amount, payment_date, status }]);
+                error = insertError;
+                if (!error) successMessage = `Nuevo pago creado.`;
+            }
+
+            if (error) {
+                showNotification(`Error al guardar el pago: ${error.message}`, 'error');
+                App.Logger.log(`Error al guardar pago: ${error.message}`);
+            } else {
+                App.Logger.log(successMessage);
+                const { data, error: fetchError } = await window.supabase.from('payments').select('*');
+                if (fetchError) {
+                    console.error('Error fetching payments after save:', fetchError);
+                } else {
+                    App.state.payments = data;
+                    this.renderPaymentsTable();
+                    this.togglePaymentForm(); // Oculta el formulario después de guardar
+                    showNotification(successMessage, 'success');
+                }
+            }
+        },
 
     editPayment(id) {
-        const payment = App.state.payments.find(p => p.id === id);
+        console.log(`Editando pago con ID: ${id}`);
+        const payment = App.state.payments.find(p => p.id === Number(id));
+        console.log(payment);
         if (payment) {
+            console.error(`No se encontró el pago con ID: ${id}`);
             const form = document.getElementById('payment-form');
             if (form.classList.contains('hidden')) {
-                this.togglePaymentForm(false);
+                this.togglePaymentForm(false); // Mostrar el formulario sin reiniciarlo
             }
 
+            // Rellenar los campos del formulario con los datos del pago
             document.getElementById('payment-id').value = payment.id;
             document.getElementById('payment-project-select').value = payment.projectId;
             document.getElementById('payment-amount-input').value = payment.amount;
-            document.getElementById('payment-date-input').value = payment.payment_date.split('T')[0]; // Cambiado 'date' a 'payment_date'
+            document.getElementById('payment-date-input').value = payment.payment_date.split('T')[0];
             document.getElementById('payment-status-select').value = payment.status;
+        } else {
+            console.error(`No se encontró el pago con ID: ${id}`);
         }
-    },
+},
 
 
     async deletePayment(id) {
-        const paymentIndex = App.state.payments.findIndex(p => p.id === id);
-        if (paymentIndex > -1 && confirm('¿Está seguro de que desea eliminar este pago?')) {
-            const { error } = await window.supabase
-                .from('payments')
-                .delete()
-                .eq('id', id);
+        console.log(`Eliminando pago con ID: ${id}`);
+    const paymentIndex = App.state.payments.findIndex(p => p.id === Number(id));
+    if (paymentIndex > -1 && confirm('¿Está seguro de que desea eliminar este pago?')) {
+        const { error } = await window.supabase
+            .from('payments')
+            .delete()
+            .eq('id', id);
 
-            if (error) {
-                alert(`Error al eliminar el pago: ${error.message}`);
-                App.Logger.log(`Error al eliminar pago (ID: ${id}): ${error.message}`);
-            } else {
-                App.state.payments.splice(paymentIndex, 1);
-                this.renderPaymentsTable();
-                App.Logger.log(`Pago (ID: ${id}) eliminado.`);
-            }
+        if (error) {
+            alert(`Error al eliminar el pago: ${error.message}`);
+            App.Logger.log(`Error al eliminar pago (ID: ${id}): ${error.message}`);
+        } else {
+            // Eliminar el pago del estado local y volver a renderizar la tabla
+            App.state.payments.splice(paymentIndex, 1);
+            this.renderPaymentsTable();
+            App.Logger.log(`Pago (ID: ${id}) eliminado.`);
         }
+    }
     },
 
         // --- Logs ---
@@ -729,5 +775,38 @@ const App = {
     },
 };
 
+function showNotification(message, type = 'info') {
+    const container = document.getElementById('notification-container');
+    const notification = document.createElement('div');
+    notification.className = `notification ${type} p-4 rounded-lg shadow-md text-white font-medium transition-opacity duration-300 opacity-0`;
+    notification.textContent = message;
+
+    // Estilo según el tipo de notificación
+    if (type === 'success') {
+        notification.classList.add('bg-green-500');
+    } else if (type === 'error') {
+        notification.classList.add('bg-red-500');
+    } else if (type === 'warning') {
+        notification.classList.add('bg-yellow-500');
+    } else {
+        notification.classList.add('bg-blue-500');
+    }
+
+    // Agregar la notificación al contenedor
+    container.appendChild(notification);
+
+    // Mostrar la notificación con una animación
+    setTimeout(() => {
+        notification.classList.remove('opacity-0');
+    }, 10);
+
+    // Eliminar la notificación después de 5 segundos
+    setTimeout(() => {
+        notification.classList.add('opacity-0');
+        setTimeout(() => notification.remove(), 300);
+    }, 5000);
+}
+
 // Iniciar la aplicación cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => App.init());
+

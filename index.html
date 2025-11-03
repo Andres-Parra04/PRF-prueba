@@ -10,6 +10,9 @@
 
 <body class="p-4 sm:p-8 bg-gray-100">
     
+    <!-- Contenedor de notificaciones -->
+    <div id="notification-container" class="fixed top-4 right-4 z-50 space-y-4"></div>
+
     <!-- Contenedor Principal de la SPA -->
     <div id="app" class="max-w-7xl mx-auto bg-white p-4 sm:p-8 rounded-xl shadow-2xl min-h-screen">
         
@@ -193,7 +196,7 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="payment-amount-input" class="block text-sm font-medium text-gray-700">Monto</label>
+                        <label for="payment-amount-input" class="block text-sm font-medium text-gray-700">Monto ($)</label>
                         <input type="number" id="payment-amount-input" required class="w-full px-3 py-2 border rounded-lg">
                     </div>
                     <div class="mb-3">
