@@ -55,9 +55,17 @@ body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
         min-height: auto;
     }
 
-    /* Asegura que solo el dashboard del cliente o las vistas de admin sean visibles */
+    /* --- CORRECCIÓN: ELIMINAR ESTA REGLA CONFLICTIVA --- */
+    /* Se elimina la siguiente regla que forzaba la visualización de todas las sub-vistas, incluidos los logs.
     #client-dashboard,
     #admin-page .admin-sub-view {
+        display: block !important;
+        visibility: visible !important;
+    }
+    */
+
+    /* Asegura que solo el dashboard del cliente sea visible si estamos en esa página */
+    #client-dashboard, #admin-page .admin-sub-view:not(#admin-logs) {
         display: block !important;
         visibility: visible !important;
     }

@@ -11,27 +11,32 @@ const App = {
 
     // Inicialización de la aplicación
     async init() {
-        // Cargar datos desde Supabase en lugar de localStorage/mock
+        // La carga de datos se moverá a un flujo post-login o de recarga de sesión.
+        // Aquí solo vinculamos eventos y manejamos la ruta inicial.
+        this.bindEvents();
+        await this.Router.handleRouteChange();
+        window.addEventListener('hashchange', () => this.Router.handleRouteChange());
+    },
+
+    // --- NUEVA FUNCIÓN PARA CARGAR DATOS DEL ADMIN ---
+    async loadAdminData() {
         const { data: clientsData, error: clientsError } = await window.supabase.from('clients').select('*');
         if (clientsError) console.error('Error cargando clientes:', clientsError);
         this.state.clients = clientsData || [];
 
-        // CORRECCIÓN: Usar una consulta directa a la tabla 'projects' en lugar de la función RPC.
-        // Esto funcionará para cualquier usuario autenticado si RLS lo permite.
         const { data: projectsData, error: projectsError } = await window.supabase.from('projects').select('*');
         if (projectsError) console.error('Error cargando proyectos:', projectsError);
         this.state.projects = projectsData || [];
-
 
         const { data: paymentsData, error: paymentsError } = await window.supabase.from('payments').select('*');
         if (paymentsError) console.error('Error cargando pagos:', paymentsError);
         this.state.payments = paymentsData || [];
 
-        // Logs vienen de la tabla 'logs' en Supabase (esquema: log_id, user_id, action_type, description, timestamp)
         try {
             const { data: logsData, error: logsError } = await window.supabase
                 .from('logs')
-                .select('log_id, user_id, action_type, description, timestamp')
+                // --- CORRECCIÓN: Añadir user_email a la consulta ---
+                .select('log_id, user_id, user_email, action_type, description, timestamp')
                 .order('timestamp', { ascending: false })
                 .limit(100);
 
@@ -44,18 +49,14 @@ const App = {
                     timestamp: l.timestamp ? new Date(l.timestamp).toLocaleString() : new Date().toLocaleString(),
                     action: l.action_type || '',
                     description: l.description || '',
-                    user_id: l.user_id || null
+                    user_id: l.user_id || null,
+                    user_email: l.user_email || null // --- CORRECCIÓN: Guardar el email en el estado ---
                 }));
             }
         } catch (e) {
             console.error('Error loading logs from Supabase:', e);
             this.state.logs = [];
         }
-
-        this.bindEvents();
-        // Enrutamiento inicial basado en la URL
-        await this.Router.handleRouteChange();
-        window.addEventListener('hashchange', () => this.Router.handleRouteChange());
     },
 
     bindEvents() {
@@ -158,6 +159,11 @@ const App = {
         // --- NUEVA FUNCIÓN PARA MANEJAR EL REGISTRO ---
         async handleRegistration(event) {
             event.preventDefault();
+            const registerButton = document.querySelector('#register-form button[type="submit"]');
+            const originalButtonText = registerButton.innerHTML;
+            registerButton.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Procesando...`;
+            registerButton.disabled = true;
+
             const email = document.getElementById('register-email').value;
             const password = document.getElementById('register-password').value;
             const feedbackEl = document.getElementById('register-feedback');
@@ -181,10 +187,18 @@ const App = {
                 document.getElementById('register-form').reset();
             }
             feedbackEl.classList.remove('hidden');
+            // Restaurar botón
+            registerButton.innerHTML = originalButtonText;
+            registerButton.disabled = false;
         },
 
         async handleLogin(event) {
             event.preventDefault();
+            const loginButton = document.querySelector('#login-form button[type="submit"]');
+            const originalButtonText = loginButton.innerHTML;
+            loginButton.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Iniciando Sesión...`;
+            loginButton.disabled = true;
+
             const email = document.getElementById('admin-email').value;
             const password = document.getElementById('admin-password').value;
             const errorEl = document.getElementById('login-error');
@@ -200,10 +214,16 @@ const App = {
                 errorEl.textContent = 'Credenciales inválidas. Inténtalo de nuevo.';
                 errorEl.classList.remove('hidden');
                 App.Logger.log(`Intento de inicio de sesión fallido para: ${email}.`);
+                // Restaurar botón en caso de error
+                loginButton.innerHTML = originalButtonText;
+                loginButton.disabled = false;
             } else if (data.user) {
                 App.state.currentUser = data.user;
                 App.Logger.log(`Inicio de sesión exitoso del administrador: ${data.user.email}.`);
-                window.location.hash = '#/admin';
+                
+                // --- CAMBIO CLAVE: Cargar datos y luego navegar ---
+                await App.loadAdminData(); // Cargar todos los datos necesarios
+                window.location.hash = '#/admin'; // Navegar a la vista de admin
             }
         },
 
@@ -236,6 +256,9 @@ const App = {
             this.renderProjectsTable();
             this.renderPaymentsTable();
             this.renderLogs();
+            // Ocultar el loader general cuando la vista admin esté lista
+            const mainLoader = document.getElementById('main-loader');
+            if (mainLoader) mainLoader.classList.add('hidden');
         },
 
         setView(view) {
@@ -294,6 +317,20 @@ const App = {
                 document.getElementById('client-address-input').value = ''; // Limpiar campo dirección
             }
 
+            // Lógica para el contador de caracteres de la dirección
+            const addressInput = document.getElementById('client-address-input');
+            const charCount = document.getElementById('address-char-count');
+            addressInput.maxLength = 80; // Limitar la entrada a 80  caracteres
+
+            const updateCharCount = () => {
+                const currentLength = addressInput.value.length;
+                charCount.textContent = `${currentLength}/80`;
+            };
+
+            // Limpiar listener anterior para evitar duplicados al abrir/cerrar
+            addressInput.removeEventListener('input', updateCharCount); 
+            addressInput.addEventListener('input', updateCharCount);
+            updateCharCount(); // Actualizar contador al abrir el formulario
         },
     
         async saveClient(event) {
@@ -791,10 +828,13 @@ const App = {
         renderLogs() {
             const list = document.getElementById('logs-list');
             list.innerHTML = App.state.logs.map(log => {
-                // Mostrar email del admin actual si coincide, si no mostrar user_id
-                const userLabel = (log.user_id && App.state.currentUser && log.user_id === App.state.currentUser.id) ?
-                    App.state.currentUser.email :
-                    (log.user_id || 'sistema');
+                // CORRECCIÓN: Usar el email guardado en el log.
+                // Si no existe, usar el email del usuario actual si coincide el ID.
+                // Como último recurso, mostrar el user_id o 'sistema'.
+                const userLabel = log.user_email || 
+                                  (log.user_id && App.state.currentUser && log.user_id === App.state.currentUser.id ? App.state.currentUser.email : log.user_id) || 
+                                  'sistema';
+
                 return `<li><span class="text-gray-500">${log.timestamp}:</span> <strong class="ml-2">${log.action}</strong> - ${log.description} <span class="text-xs text-gray-400 ml-2">(${userLabel})</span></li>`;
             }).join('');
         }
@@ -804,6 +844,10 @@ const App = {
     Client: {
         async init(token) {
             document.getElementById('app-navbar').classList.add('hidden'); // Ocultar navbar en vista cliente
+            document.getElementById('client-loading-screen').classList.remove('hidden');
+            document.getElementById('client-dashboard').classList.add('hidden');
+            document.getElementById('client-error-screen').classList.add('hidden');
+
             try {
                 // 1. Llamar a la función de Supabase para obtener todos los datos del cliente.
                 const { data, error } = await window.supabase.functions.invoke('get-client-data', {
@@ -815,25 +859,30 @@ const App = {
                     throw new Error(error.message);
                 }
 
-                App.Logger.log(`Acceso al reporte del cliente '${data.client.name}' (ID: ${data.client.id}).`);
-
                 this.renderDashboard(data);
 
             } catch (error) {
                 this.showError(error.message);
-                App.Logger.log(`Intento de acceso fallido al reporte. Razón: ${error.message}`);
             }
         },
 
         renderDashboard(data) {
+            // Función para truncar texto si es muy largo
+            const truncateText = (text, maxLength = 30, displayLength = 20) => {
+                if (typeof text !== 'string' || text.length <= maxLength) {
+                    return text || 'N/A';
+                }
+                return `${text.substring(0, displayLength)}...`;
+            };
+
             // Obtener datos financieros del cliente desde el objeto 'data'
             const { client, projects, payments, totals } = data;
             
             // Rellenar tarjeta de información del cliente (NUEVO)
-            document.querySelector('#client-card-name span').textContent = client.name || 'N/A';
-            document.querySelector('#client-card-email span').textContent = client.email || 'N/A';
+            document.querySelector('#client-card-name span').textContent = truncateText(client.name);
+            document.querySelector('#client-card-email span').textContent = truncateText(client.email);
             document.querySelector('#client-card-phone span').textContent = client.phone || 'N/A';
-            document.querySelector('#client-card-address span').textContent = client.address || 'N/A';
+            document.querySelector('#client-card-address span').textContent = truncateText(client.address);
 
             // Separar proyectos en activos y cerrados
             const activeProjects = projects.filter(p => p.status !== 'Terminado');
@@ -938,8 +987,11 @@ const App = {
             const hash = window.location.hash;
             const user = await App.Auth.checkSession();
 
-            // Ocultar todas las páginas
+            // Ocultar todas las páginas y mostrar loader principal
             document.querySelectorAll('.page-section').forEach(p => p.style.display = 'none');
+            const mainLoader = document.getElementById('main-loader');
+            if (mainLoader) mainLoader.classList.remove('hidden');
+
             document.getElementById('app-navbar').classList.remove('hidden');
             document.getElementById('client-error-screen').classList.add('hidden');
             document.getElementById('client-dashboard').classList.add('hidden');
@@ -947,20 +999,28 @@ const App = {
 
 
             if (hash.startsWith('#client/')) {
+                if(mainLoader) mainLoader.classList.add('hidden'); // Ocultar loader principal en vista cliente
                 const token = hash.split('/')[1];
                 document.getElementById('client-page').style.display = 'block';
                 App.Client.init(token);
             } else if (hash === '#/admin' && user) {
+                // Si hay un usuario y la ruta es /admin, cargamos los datos si aún no existen
+                if (App.state.clients.length === 0) {
+                    await App.loadAdminData();
+                }
                 document.getElementById('admin-page').style.display = 'block';
                 App.Admin.init();
             } else {
+                if (mainLoader) mainLoader.classList.add('hidden');
                 // Por defecto, ir al login si no hay sesión, o al admin si la hay
                 if (user) {
+                    // Si hay usuario pero no estamos en #/admin (p.ej. en la raíz), redirigir.
                     window.location.hash = '#/admin';
                 } else {
                     // CORRECCIÓN: No redirigir si estamos en una ruta de cliente.
                     // Esto evita que la petición a la función sea cancelada.
                     if (!hash.startsWith('#client/')) {
+                        window.location.hash = '#/login'; // Redirigir explícitamente
                         App.Auth.toggleAuthView(true); 
                         document.getElementById('logout-btn').classList.add('hidden');
                     }
@@ -1015,6 +1075,8 @@ const App = {
 
             const user = App.state.currentUser;
             const user_id = user ? user.id : null;
+            // --- NUEVO: Obtener el email del usuario para guardarlo en el log ---
+            const user_email = user ? user.email : null;
 
             // Añadir localmente para UI inmediata
             const localEntry = {
@@ -1022,7 +1084,8 @@ const App = {
                 timestamp: new Date().toLocaleString(),
                 action: actionType,
                 description,
-                user_id
+                user_id,
+                user_email // --- NUEVO: Añadir email al objeto local ---
             };
             App.state.logs.unshift(localEntry);
             if (App.state.logs.length > 100) App.state.logs.pop();
@@ -1036,7 +1099,8 @@ const App = {
             try {
                 const { data, error } = await window.supabase
                     .from('logs')
-                    .insert([{ user_id, action_type: actionType, description }])
+                    // --- CORRECCIÓN: Insertar también el user_email ---
+                    .insert([{ user_id, user_email, action_type: actionType, description }])
                     .select('log_id, timestamp');
 
                 if (error) {
