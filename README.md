@@ -610,14 +610,3 @@ curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/get-client-data" \
   - Causa: Token incorrecto o expirado.
   - Solución: Generar un nuevo enlace desde el panel de admin.
 
----
-
-## Contribuir
-
-Los PRs y issues son bienvenidos. Abre un issue para discutir cambios mayores.
-
----
-
-## Licencia
-
-MIT. Ver el archivo LICENSE.
