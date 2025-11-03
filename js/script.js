@@ -254,6 +254,8 @@ const App = {
                 <tr id="client-row-${client.id}">
                     <td class="px-6 py-4 whitespace-nowrap">${client.name}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${client.email}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${client.phone || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${client.address || 'N/A'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button data-action="generate-token" data-id="${client.id}" class="text-indigo-600 hover:text-indigo-900 mr-3">Generar Link</button>
                         <button data-action="edit-client" data-id="${client.id}" class="text-blue-600 hover:text-blue-900 mr-3">Editar</button>
@@ -280,6 +282,8 @@ const App = {
             if (reset) {
                 form.reset();
                 document.getElementById('client-id').value = '';
+                document.getElementById('client-phone-input').value = ''; // Limpiar campo teléfono
+                document.getElementById('client-address-input').value = ''; // Limpiar campo dirección
             }
 
         },
@@ -289,13 +293,15 @@ const App = {
             const id = document.getElementById('client-id').value;
             const name = document.getElementById('client-name-input').value;
             const email = document.getElementById('client-email-input').value;
+            const phone = document.getElementById('client-phone-input').value;
+            const address = document.getElementById('client-address-input').value;
             let error;
             let successMessage = '';
 
             if (id) { // Editar cliente existente
                 const { error: updateError } = await window.supabase
                     .from('clients')
-                    .update({ name, email })
+                    .update({ name, email, phone, address })
                     .eq('id', id);
                 error = updateError;
                 if (!error) successMessage = `Cliente '${name}' (ID: ${id}) actualizado.`;
@@ -303,7 +309,7 @@ const App = {
             } else { // Crear nuevo cliente
                 const { error: insertError } = await window.supabase
                     .from('clients')
-                    .insert([{ name, email }]);
+                    .insert([{ name, email, phone, address }]);
                 error = insertError;
                 if (!error) successMessage = `Nuevo cliente '${name}' creado.`;
             }
@@ -345,6 +351,8 @@ const App = {
                 document.getElementById('client-id').value = client.id;
                 document.getElementById('client-name-input').value = client.name;
                 document.getElementById('client-email-input').value = client.email;
+                document.getElementById('client-phone-input').value = client.phone || '';
+                document.getElementById('client-address-input').value = client.address || '';
             }
         },
 
@@ -790,10 +798,13 @@ const App = {
             const activeProjects = projects.filter(p => p.status !== 'Terminado');
             const closedProjects = projects.filter(p => p.status === 'Terminado');
 
+            // --- MODIFICACIÓN: Calcular el total pendiente desde la suma de los proyectos --- 
+            const totalPendingFromProjects = projects.reduce((sum, project) => sum + (project.pending_balance || 0), 0);
+
             // Rellenar tarjetas de resumen con los totales ya calculados por la función
             document.getElementById('report-client-name').textContent = `Reporte para ${client.name}`;
             document.getElementById('report-total-paid').textContent = `$${totals.total_paid.toFixed(2)}`;
-            document.getElementById('report-total-pending').textContent = `$${totals.total_pending.toFixed(2)}`;
+            document.getElementById('report-total-pending').textContent = `$${totalPendingFromProjects.toFixed(2)}`;
             document.getElementById('report-active-projects').textContent = activeProjects.length;
 
             // Función auxiliar para renderizar filas de proyectos
@@ -853,7 +864,7 @@ const App = {
             }).join('');
 
             // Rellenar total final
-            document.getElementById('report-final-pending').textContent = `$${totals.total_pending.toFixed(2)}`;
+            document.getElementById('report-final-pending').textContent = `$${totalPendingFromProjects.toFixed(2)}`;
 
             // Ocultar carga y mostrar dashboard
             document.getElementById('client-loading-screen').classList.add('hidden');
